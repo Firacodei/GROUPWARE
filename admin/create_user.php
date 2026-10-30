@@ -1,21 +1,21 @@
 
 <?php
 session_start();
-
 require_once "../config/database.php";
 
-// Only administrators can create accounts
+// Only administrators can access this page
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
-    die("Access denied. Administrators only.");
+    header("Location: ../index.php");
+    exit;
 }
 
 $message = "";
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $full_name = trim($_POST['full_name']);
-    $email = trim($_POST['email']);
-    $password = $_POST['password'];
+    $full_name = trim($_POST["full_name"]);
+    $email = trim($_POST["email"]);
+    $password = $_POST["password"];
 
     if (empty($full_name) || empty($email) || empty($password)) {
         $message = "Please fill in all fields.";
@@ -62,26 +62,47 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Create Student Account</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Student Account | GROUPWARE</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body>
 
-    <h2>Create Student Account</h2>
+<div class="create-user-container">
+    <div class="create-user-card">
 
-    <p><?php echo htmlspecialchars($message); ?></p>
+        <h2>Create Student Account</h2>
+        <p>Register a new student in your GROUPWARE workspace.</p>
 
-    <form method="POST">
-        <label>Full Name</label><br>
-        <input type="text" name="full_name" required><br><br>
+        <?php if ($message !== ""): ?>
+            <p class="form-message">
+                <?php echo htmlspecialchars($message); ?>
+            </p>
+        <?php endif; ?>
 
-        <label>Email</label><br>
-        <input type="email" name="email" required><br><br>
+        <form method="POST">
 
-        <label>Password</label><br>
-        <input type="password" name="password" required minlength="8"><br><br>
+            <label for="full_name">Full Name</label>
+            <input type="text" id="full_name" name="full_name"
+                   placeholder="Enter student's full name" required>
 
-        <button type="submit">Create Account</button>
-    </form>
+            <label for="email">Email Address</label>
+            <input type="email" id="email" name="email"
+                   placeholder="Enter student's email" required>
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password"
+                   placeholder="Create a password"
+                   minlength="8" required>
+
+            <button type="submit">Create Account</button>
+
+        </form>
+
+        <p><a href="dashboard.php">Back to Dashboard</a></p>
+
+    </div>
+</div>
 
 </body>
 </html>

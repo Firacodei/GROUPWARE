@@ -472,3 +472,75 @@ body {
         overflow-wrap: anywhere;
     }
 }
+/* CREATE STUDENT ACCOUNT PAGE */
+
+.create-user-container {
+    min-height: 100vh;
+    background: #0b1120;
+    padding: 50px 20px;
+    color: #ffffff;
+}
+
+.create-user-card {
+    max-width: 650px;
+    margin: 30px auto;
+    padding: 35px;
+    background: #111b2e;
+    border: 1px solid #26364f;
+    border-radius: 16px;
+}
+
+.create-user-card h2 {
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+
+.create-user-card p {
+    color: #94a3b8;
+    margin-bottom: 25px;
+}
+
+.create-user-card label {
+    display: block;
+    margin-bottom: 8px;
+    color: #dbeafe;
+    font-weight: 600;
+}
+
+.create-user-card input {
+    width: 100%;
+    padding: 13px;
+    margin-bottom: 22px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #0b1120;
+    color: white;
+    font-size: 15px;
+    box-sizing: border-box;
+}
+
+.create-user-card input:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.create-user-card button {
+    width: 100%;
+    padding: 14px;
+    background: #2454df;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.create-user-card button:hover {
+    background: #1d4ed8;
+}
+
+.create-user-card .form-message {
+    color: #60a5fa;
+    margin-bottom: 20px;
+}
