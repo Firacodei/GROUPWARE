@@ -2,8 +2,11 @@
 <?php
 session_start();
 
+require_once "../config/database.php";
+
 if (
     !isset($_SESSION["user_id"]) ||
+    !isset($_SESSION["role"]) ||
     $_SESSION["role"] !== "student"
 ) {
     header("Location: ../index.php");
@@ -11,6 +14,34 @@ if (
 }
 
 $studentName = $_SESSION["full_name"];
+$studentId = $_SESSION["user_id"];
+
+// Find the student's team
+$teamQuery = $conn->prepare("
+    SELECT t.id, t.team_name
+    FROM teams t
+    JOIN team_members tm ON t.id = tm.team_id
+    WHERE tm.user_id = ?
+    LIMIT 1
+");
+
+$teamQuery->execute([$studentId]);
+$team = $teamQuery->fetch(PDO::FETCH_ASSOC);
+
+$teamMembers = [];
+
+if ($team) {
+    $membersQuery = $conn->prepare("
+        SELECT u.full_name, u.email, tm.joined_at
+        FROM team_members tm
+        JOIN users u ON tm.user_id = u.id
+        WHERE tm.team_id = ?
+        ORDER BY u.full_name ASC
+    ");
+
+    $membersQuery->execute([$team["id"]]);
+    $teamMembers = $membersQuery->fetchAll(PDO::FETCH_ASSOC);
+}
 ?>
 
 <!DOCTYPE html>
@@ -150,6 +181,64 @@ $studentName = $_SESSION["full_name"];
             </div>
 
         </section>
+
+        
+<!-- MY TEAM SECTION -->
+<section class="content-card team-section">
+
+    <div class="section-heading">
+        <div>
+            <h3>My Team</h3>
+            <p>
+                <?php echo $team
+                    ? htmlspecialchars($team["team_name"])
+                    : "You are not assigned to a team yet."; ?>
+            </p>
+        </div>
+
+        <span><?php echo count($teamMembers); ?> Members</span>
+    </div>
+
+    <?php if (!empty($teamMembers)): ?>
+
+        <div class="team-members-list">
+
+            <?php foreach ($teamMembers as $member): ?>
+
+                <div class="team-member">
+
+                    <div class="avatar">
+                        <?php echo strtoupper(substr($member["full_name"], 0, 1)); ?>
+                    </div>
+
+                    <div class="member-details">
+                        <strong>
+                            <?php echo htmlspecialchars($member["full_name"]); ?>
+                        </strong>
+
+                        <small>
+                            <?php echo htmlspecialchars($member["email"]); ?>
+                        </small>
+                    </div>
+
+                    <?php if ($member["full_name"] === $studentName): ?>
+                        <span class="member-you">You</span>
+                    <?php endif; ?>
+
+                </div>
+
+            <?php endforeach; ?>
+
+        </div>
+
+    <?php else: ?>
+
+        <p>No team members found.</p>
+
+    <?php endif; ?>
+
+</section>
+
 
 
         <!-- LOWER CONTENT -->
