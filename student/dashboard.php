@@ -69,33 +69,37 @@ if ($team) {
 
         <div class="sidebar-label">WORKSPACE</div>
 
-        <nav class="sidebar-nav">
+<nav class="sidebar-nav">
 
-            <a href="dashboard.php" class="nav-link active">
-                <span>▦</span> Overview
-            </a>
+    <a href="dashboard.php" class="nav-link active">
+        <span>▦</span> Overview
+    </a>
 
-            <a href="#" class="nav-link">
-                <span>👥</span> My Team
-            </a>
+    <a href="#" class="nav-link">
+        <span>👥</span> My Team
+    </a>
 
-            <a href="#" class="nav-link">
-                <span>✓</span> My Tasks
-            </a>
+    <a href="#" class="nav-link">
+        <span>✓</span> My Tasks
+    </a>
 
-            <a href="#" class="nav-link">
-                <span>◈</span> Proposals
-            </a>
+    <a href="proposals.php" class="nav-link">
+        <span>◈</span> Submit Proposal
+    </a>
 
-            <a href="#" class="nav-link">
-                <span>☑</span> Approvals
-            </a>
+    <a href="my_proposals.php" class="nav-link">
+        <span>▤</span> My Proposals
+    </a>
 
-            <a href="#" class="nav-link">
-                <span>▤</span> Contributions
-            </a>
+   <a href="approvals.php" class="nav-link">
+    <span>☑</span> Approvals
+   </a>
 
-        </nav>
+    <a href="#" class="nav-link">
+        <span>▤</span> Contributions
+    </a>
+
+</nav>
 
         <div class="sidebar-bottom">
             <a href="../logout.php" class="logout-link">
