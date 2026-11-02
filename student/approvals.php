@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 require_once "../config/database.php";
@@ -14,6 +13,7 @@ if (
 
 $userId = (int) $_SESSION["user_id"];
 $message = "";
+$isVoteSuccess = false;
 
 // Find the student's team
 $teamQuery = $conn->prepare("
@@ -68,7 +68,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 $insert->execute([$proposalId, $userId, $vote]);
 
-                $message = "Your vote was recorded successfully!";
+                $message = "Your vote has been recorded successfully!";
+                $isVoteSuccess = true;
             }
         } catch (PDOException $e) {
             if ($e->getCode() === "23000") {
@@ -112,13 +113,15 @@ $stmt = $conn->prepare("
 $stmt->execute([$userId, $teamId, $userId]);
 $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Approvals | GROUPWARE</title>
+    <title>Proposal Approvals | GROUPWARE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body>
@@ -128,17 +131,37 @@ $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <header class="approval-header">
         <div>
             <h1>Proposal Approvals</h1>
-            <p>Review and vote on your team's proposed changes.</p>
+            <p>Review change requests proposed by your team members and cast your vote.</p>
         </div>
 
-        <a href="dashboard.php" class="approval-back">
-            Back to Dashboard
-        </a>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="dashboard.php" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                Dashboard
+            </a>
+            <a href="proposals.php" class="btn btn-primary">
+                + New Proposal
+            </a>
+        </div>
     </header>
 
     <?php if ($message): ?>
-        <div class="approval-message">
-            <?php echo htmlspecialchars($message); ?>
+        <div class="alert <?php echo $isVoteSuccess ? 'alert-success' : 'alert-warning'; ?>" role="alert">
+            <?php if ($isVoteSuccess): ?>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+            <?php else: ?>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            <?php endif; ?>
+            <span><?php echo htmlspecialchars($message); ?></span>
         </div>
     <?php endif; ?>
 
@@ -148,35 +171,55 @@ $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             <article class="approval-card">
 
-                <h2>
-                    <?php echo htmlspecialchars($proposal["title"]); ?>
-                </h2>
-
-                <p class="approval-proposer">
-                    Proposed by:
-                    <?php echo htmlspecialchars($proposal["proposer"]); ?>
-                </p>
+                <div class="proposal-item-top">
+                    <div>
+                        <h2><?php echo htmlspecialchars($proposal["title"]); ?></h2>
+                        <div class="approval-proposer" style="margin-top: 4px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            <span>Proposed by: <strong><?php echo htmlspecialchars($proposal["proposer"]); ?></strong></span>
+                            <span style="color: var(--text-muted);">&bull;</span>
+                            <span style="color: var(--text-muted);"><?php echo date("M d, Y", strtotime($proposal["created_at"])); ?></span>
+                        </div>
+                    </div>
+                    <span class="status-badge status-pending">Pending Vote</span>
+                </div>
 
                 <p class="approval-description">
-                    <?php echo nl2br(
-                        htmlspecialchars($proposal["description"])
-                    ); ?>
+                    <?php echo nl2br(htmlspecialchars($proposal["description"])); ?>
                 </p>
 
                 <div class="vote-counts">
-                    <span>Approved: <?php echo $proposal["approvals"]; ?></span>
-                    <span>Rejected: <?php echo $proposal["rejections"]; ?></span>
+                    <div class="vote-count-chip approved">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>Approved: <strong><?php echo (int) $proposal["approvals"]; ?></strong></span>
+                    </div>
+
+                    <div class="vote-count-chip rejected">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                        <span>Rejected: <strong><?php echo (int) $proposal["rejections"]; ?></strong></span>
+                    </div>
                 </div>
 
                 <?php if ($proposal["has_voted"]): ?>
 
-                    <p class="already-voted">
-                        You have already voted on this proposal.
-                    </p>
+                    <div class="already-voted">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>You have already cast your vote on this proposal.</span>
+                    </div>
 
                 <?php else: ?>
 
-                    <form method="POST" class="vote-actions">
+                    <form method="POST" action="" class="vote-actions">
 
                         <input
                             type="hidden"
@@ -190,7 +233,10 @@ $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             value="approve"
                             class="approve-btn"
                         >
-                            Approve
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Approve Proposal
                         </button>
 
                         <button
@@ -199,7 +245,11 @@ $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             value="reject"
                             class="reject-btn"
                         >
-                            Reject
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Reject Proposal
                         </button>
 
                     </form>
@@ -213,11 +263,28 @@ $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <?php else: ?>
 
         <div class="approval-empty">
-            <h2>No proposals to review</h2>
-            <p>There are currently no pending proposals from other team members.</p>
+            <div class="empty-icon" style="margin-bottom: 14px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+            </div>
+            <h2>No pending proposals to review</h2>
+            <p>All change proposals submitted by other team members have been reviewed.</p>
+            <a href="dashboard.php" class="btn btn-secondary">Back to Dashboard</a>
         </div>
 
     <?php endif; ?>
+
+    <div>
+        <a href="dashboard.php" class="approval-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Back to Dashboard
+        </a>
+    </div>
 
 </div>
 
