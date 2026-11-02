@@ -29,6 +29,9 @@ $team = $teamQuery->fetch(PDO::FETCH_ASSOC);
 
 $teamMembers = [];
 $pendingProposalsCount = 0;
+$activeProjectsCount = 0;
+$tasksCount = 0;
+$contributionScore = "0%";
 
 if ($team) {
     $membersQuery = $conn->prepare("
@@ -52,6 +55,35 @@ if ($team) {
         $pendingProposalsCount = (int) $pQuery->fetchColumn();
     } catch (PDOException $e) {
         $pendingProposalsCount = 0;
+    }
+
+    $activeProjectsCount = $team ? 1 : 0;
+    try {
+        $tQuery = $conn->prepare("SELECT COUNT(*) FROM tasks WHERE assigned_to = ?");
+        $tQuery->execute([$studentId]);
+        $tasksCount = (int)$tQuery->fetchColumn();
+    } catch (PDOException $e) {
+        $tasksCount = 0;
+    }
+
+    try {
+        $myPointsQuery = $conn->prepare("
+            SELECT 
+                (SELECT COUNT(*) * 25 FROM proposals WHERE proposed_by = ?) +
+                (SELECT COUNT(*) * 35 FROM proposals WHERE proposed_by = ? AND status = 'approved') +
+                (SELECT COUNT(*) * 30 FROM proposal_votes WHERE user_id = ?) AS user_pts,
+                (SELECT COUNT(*) * 25 FROM proposals WHERE team_id = ?) +
+                (SELECT COUNT(*) * 35 FROM proposals WHERE team_id = ? AND status = 'approved') +
+                (SELECT COUNT(*) * 30 FROM proposal_votes pv JOIN proposals p ON pv.proposal_id = p.id WHERE p.team_id = ?) AS team_pts
+        ");
+        $myPointsQuery->execute([$studentId, $studentId, $studentId, $team['id'], $team['id'], $team['id']]);
+        $pts = $myPointsQuery->fetch(PDO::FETCH_ASSOC);
+        if ($pts && (int)$pts['team_pts'] > 0) {
+            $pct = round(((int)$pts['user_pts'] / (int)$pts['team_pts']) * 100, 1);
+            $contributionScore = $pct . "%";
+        }
+    } catch (PDOException $e) {
+        $contributionScore = "0%";
     }
 }
 ?>
@@ -165,7 +197,7 @@ if ($team) {
                 <?php endif; ?>
             </a>
 
-            <a href="#" class="nav-link" title="Contribution analytics">
+            <a href="#contributions-section" class="nav-link" title="Contribution analytics">
                 <span class="nav-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="20" x2="18" y2="10"></line>
@@ -267,8 +299,8 @@ if ($team) {
                         </svg>
                     </div>
                 </div>
-                <h3 class="stat-card-value">0</h3>
-                <small class="stat-card-caption">Awaiting project assignment</small>
+                <h3 class="stat-card-value"><?php echo $activeProjectsCount; ?></h3>
+                <small class="stat-card-caption"><?php echo $activeProjectsCount > 0 ? "Active group project" : "Awaiting project assignment"; ?></small>
             </div>
 
             <div class="stat-card">
@@ -281,8 +313,8 @@ if ($team) {
                         </svg>
                     </div>
                 </div>
-                <h3 class="stat-card-value">0</h3>
-                <small class="stat-card-caption">No tasks currently assigned</small>
+                <h3 class="stat-card-value"><?php echo $tasksCount; ?></h3>
+                <small class="stat-card-caption"><?php echo $tasksCount > 0 ? $tasksCount . " active deliverables" : "No tasks currently assigned"; ?></small>
             </div>
 
             <div class="stat-card">
@@ -304,15 +336,15 @@ if ($team) {
 
             <div class="stat-card">
                 <div class="stat-card-top">
-                    <span class="stat-card-label">Contribution Score</span>
+                    <span class="stat-card-label" id="contributions-section">Contribution Score</span>
                     <div class="stat-icon emerald">
                         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                         </svg>
                     </div>
                 </div>
-                <h3 class="stat-card-value">0%</h3>
-                <small class="stat-card-caption">Awaiting project activity</small>
+                <h3 class="stat-card-value"><?php echo $contributionScore; ?></h3>
+                <small class="stat-card-caption"><?php echo $contributionScore !== "0%" ? "Peer activity and quorum share" : "Awaiting project activity"; ?></small>
             </div>
 
         </section>
