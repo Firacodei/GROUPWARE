@@ -156,6 +156,9 @@ try {
                 </span>
                 Assessments &amp; Marks
             </a>
+    <a href="tasks.php" class="nav-link">
+    Task Management
+    </a>
 
         </nav>
 

@@ -32,6 +32,8 @@ if (!$team) {
 $teamId = (int) $team["team_id"];
 
 // Process a vote
+
+// Process a vote and calculate the majority decision
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $proposalId = filter_input(
         INPUT_POST,
@@ -45,42 +47,121 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $message = "Invalid vote request.";
     } else {
         try {
-            // Check that proposal belongs to the student's team
-            // and that the student did not create it.
+            $conn->beginTransaction();
+
+            // Lock the proposal while processing its vote
             $check = $conn->prepare("
-                SELECT id
+                SELECT id, proposed_by
                 FROM proposals
                 WHERE id = ?
                   AND team_id = ?
                   AND proposed_by <> ?
                   AND status = 'pending'
+                FOR UPDATE
             ");
+
             $check->execute([$proposalId, $teamId, $userId]);
+            $proposal = $check->fetch(PDO::FETCH_ASSOC);
 
-            if (!$check->fetch()) {
-                $message = "You cannot vote on this proposal.";
-            } else {
-                $insert = $conn->prepare("
-                    INSERT INTO proposal_votes
-                    (proposal_id, user_id, vote)
-                    VALUES (?, ?, ?)
-                ");
-
-                $insert->execute([$proposalId, $userId, $vote]);
-
-                $message = "Your vote has been recorded successfully!";
-                $isVoteSuccess = true;
+            if (!$proposal) {
+                throw new Exception("You cannot vote on this proposal.");
             }
+
+            // Record the student's vote
+            $insert = $conn->prepare("
+                INSERT INTO proposal_votes
+                (proposal_id, user_id, vote)
+                VALUES (?, ?, ?)
+            ");
+
+            $insert->execute([$proposalId, $userId, $vote]);
+
+            // Count eligible voters, excluding the proposer
+            $eligibleQuery = $conn->prepare("
+                SELECT COUNT(*)
+                FROM team_members
+                WHERE team_id = ?
+                  AND user_id <> ?
+            ");
+
+            $eligibleQuery->execute([
+                $teamId,
+                (int) $proposal["proposed_by"]
+            ]);
+
+            $eligibleVoters = (int) $eligibleQuery->fetchColumn();
+
+            // Calculate the majority threshold
+            $majority = (int) floor($eligibleVoters / 2) + 1;
+
+            // Count approval and rejection votes
+            $voteQuery = $conn->prepare("
+                SELECT
+                    SUM(CASE WHEN vote = 'approve' THEN 1 ELSE 0 END) AS approvals,
+                    SUM(CASE WHEN vote = 'reject' THEN 1 ELSE 0 END) AS rejections
+                FROM proposal_votes
+                WHERE proposal_id = ?
+            ");
+
+            $voteQuery->execute([$proposalId]);
+            $results = $voteQuery->fetch(PDO::FETCH_ASSOC);
+
+            $approvals = (int) $results["approvals"];
+            $rejections = (int) $results["rejections"];
+
+            // Determine the proposal's final status
+            $newStatus = "pending";
+
+            if ($approvals >= $majority) {
+                $newStatus = "approved";
+            } elseif ($rejections >= $majority) {
+                $newStatus = "rejected";
+            }
+
+            // Update proposal status if a majority is reached
+            $update = $conn->prepare("
+                UPDATE proposals
+                SET status = ?
+                WHERE id = ?
+            ");
+
+            $update->execute([$newStatus, $proposalId]);
+
+            $conn->commit();
+
+            if ($newStatus === "approved") {
+                $message = "Your vote was recorded. The proposal has been approved!";
+            } elseif ($newStatus === "rejected") {
+                $message = "Your vote was recorded. The proposal has been rejected.";
+            } else {
+                $message = "Your vote has been recorded successfully. Waiting for more votes.";
+            }
+
+            $isVoteSuccess = true;
+
         } catch (PDOException $e) {
+            if ($conn->inTransaction()) {
+                $conn->rollBack();
+            }
+
             if ($e->getCode() === "23000") {
                 $message = "You have already voted on this proposal.";
             } else {
                 error_log($e->getMessage());
                 $message = "Something went wrong. Please try again.";
             }
+
+        } catch (Exception $e) {
+            if ($conn->inTransaction()) {
+                $conn->rollBack();
+            }
+
+            $message = $e->getMessage();
         }
     }
 }
+
+
 
 // Fetch pending proposals and vote counts
 $stmt = $conn->prepare("

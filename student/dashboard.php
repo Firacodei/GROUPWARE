@@ -176,6 +176,10 @@ if ($team) {
                 Contributions
             </a>
 
+     <a href="tasks.php" class="nav-link">
+    My Tasks
+     </a>
+
         </nav>
 
         <div class="sidebar-bottom">
