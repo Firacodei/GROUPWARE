@@ -102,6 +102,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                     ':due_date' => $dueDate,
                 ]);
 
+                $newTaskId = (int) $conn->lastInsertId();
+                require_once __DIR__ . '/../config/activity_logger.php';
+                logActivity(
+                    $conn,
+                    $instructorId,
+                    (int) $teamId,
+                    'task_assigned',
+                    "Assigned task: \"$title\"",
+                    'task',
+                    $newTaskId
+                );
+
                 $_SESSION['task_flash'] = 'Task created and assigned successfully.';
                 header('Location: tasks.php');
                 exit;

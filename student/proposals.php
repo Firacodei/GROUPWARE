@@ -40,6 +40,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $description
             ]);
 
+            $newProposalId = (int) $conn->lastInsertId();
+
+            require_once __DIR__ . "/../config/activity_logger.php";
+            logActivity(
+                $conn,
+                $user_id,
+                (int) $team['team_id'],
+                'proposal_created',
+                "Submitted change proposal: \"$title\"",
+                'proposal',
+                $newProposalId
+            );
+
             $message = "Your proposal was submitted successfully and is now open for team review!";
             $isSuccess = true;
         } else {

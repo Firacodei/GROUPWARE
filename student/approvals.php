@@ -51,7 +51,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             // Lock the proposal while processing its vote
             $check = $conn->prepare("
-                SELECT id, proposed_by
+                SELECT id, title, proposed_by
                 FROM proposals
                 WHERE id = ?
                   AND team_id = ?
@@ -128,6 +128,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $update->execute([$newStatus, $proposalId]);
 
             $conn->commit();
+
+            require_once __DIR__ . "/../config/activity_logger.php";
+            logActivity(
+                $conn,
+                $userId,
+                $teamId,
+                'proposal_voted',
+                "Voted to $vote proposal: \"{$proposal['title']}\"",
+                'proposal',
+                $proposalId
+            );
+
+            if ($newStatus === 'approved') {
+                logActivity(
+                    $conn,
+                    $userId,
+                    $teamId,
+                    'proposal_approved',
+                    "Proposal \"{$proposal['title']}\" reached majority approval",
+                    'proposal',
+                    $proposalId
+                );
+            } elseif ($newStatus === 'rejected') {
+                logActivity(
+                    $conn,
+                    $userId,
+                    $teamId,
+                    'proposal_rejected',
+                    "Proposal \"{$proposal['title']}\" was rejected by majority vote",
+                    'proposal',
+                    $proposalId
+                );
+            }
 
             if ($newStatus === "approved") {
                 $message = "Your vote was recorded. The proposal has been approved!";
