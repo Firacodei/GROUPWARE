@@ -95,4 +95,48 @@ function getRecentTeamActivities(PDO $conn, int $teamId, int $limit = 5): array 
     }
 }
 
+/**
+ * Fetch latest activity entries across all teams (for admin/instructors/global view)
+ */
+function getAllRecentActivities(PDO $conn, int $limit = 20): array {
+    try {
+        $stmt = $conn->prepare("
+            SELECT a.id, a.activity_type, a.description, a.created_at,
+                   u.full_name, u.role, t.team_name
+            FROM activity_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            LEFT JOIN teams t ON a.team_id = t.id
+            ORDER BY a.created_at DESC
+            LIMIT ?
+        ");
+        $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        return [];
+    }
+}
 
+/**
+ * Fetch latest activity entries involving a specific user
+ */
+function getUserRecentActivities(PDO $conn, int $userId, int $limit = 20): array {
+    try {
+        $stmt = $conn->prepare("
+            SELECT a.id, a.activity_type, a.description, a.created_at,
+                   u.full_name, u.role, t.team_name
+            FROM activity_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            LEFT JOIN teams t ON a.team_id = t.id
+            WHERE a.user_id = ?
+            ORDER BY a.created_at DESC
+            LIMIT ?
+        ");
+        $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        return [];
+    }
+}

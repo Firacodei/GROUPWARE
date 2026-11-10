@@ -1,32 +1,29 @@
 <?php
 session_start();
-require_once "../config/database.php";
+require_once __DIR__ . "/../config/database.php";
+require_once __DIR__ . "/../config/activity_logger.php";
+require_once __DIR__ . "/../includes/auth.php";
 
-if (
-    !isset($_SESSION['user_id']) ||
-    $_SESSION['role'] !== 'admin'
-) {
-    header("Location: ../index.php");
-    exit;
-}
+requireAuth('admin', '../login.php');
 
 $adminName = $_SESSION['full_name'];
 
 // Query real system metrics
 $totalUsers = 0;
-$studentsCount = 0;
-$instructorsCount = 0;
+$membersCount = 0;
+$leadsCount = 0;
 $teamsCount = 0;
 $recentUsers = [];
 $teamsList = [];
+$systemActivities = [];
 
 try {
     $totalUsers = (int) $conn->query("SELECT COUNT(*) FROM users")->fetchColumn();
-    $studentsCount = (int) $conn->query("SELECT COUNT(*) FROM users WHERE role = 'student'")->fetchColumn();
-    $instructorsCount = (int) $conn->query("SELECT COUNT(*) FROM users WHERE role = 'instructor'")->fetchColumn();
+    $membersCount = (int) $conn->query("SELECT COUNT(*) FROM users WHERE role = 'student'")->fetchColumn();
+    $leadsCount = (int) $conn->query("SELECT COUNT(*) FROM users WHERE role = 'instructor'")->fetchColumn();
     $teamsCount = (int) $conn->query("SELECT COUNT(*) FROM teams")->fetchColumn();
 
-    // Query recent users
+    // Recent users
     $usersQuery = $conn->query("
         SELECT id, full_name, email, role
         FROM users
@@ -35,7 +32,7 @@ try {
     ");
     $recentUsers = $usersQuery->fetchAll(PDO::FETCH_ASSOC);
 
-    // Query teams with member counts
+    // Teams with member counts
     $teamsQuery = $conn->query("
         SELECT t.id, t.team_name, COUNT(tm.user_id) AS member_count
         FROM teams t
@@ -45,346 +42,262 @@ try {
     ");
     $teamsList = $teamsQuery->fetchAll(PDO::FETCH_ASSOC);
 
+    // Recent system activity
+    $systemActivities = getAllRecentActivities($conn, 6);
+
 } catch (PDOException $e) {
     error_log("Admin DB Query error: " . $e->getMessage());
 }
+
+$pageTitle = "System Administration";
+$pageTitleHeader = "Admin Console";
+$activeNav = "overview";
+$rootUrl = "../";
+
+include __DIR__ . "/../includes/layout_head.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrator Dashboard | GROUPWARE</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
-<body class="dashboard-body">
 
-<div class="dashboard-layout">
+<div class="app-shell">
+    <?php include __DIR__ . "/../includes/sidebar.php"; ?>
 
-    <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                    <path d="M2 17l10 5 10-5"></path>
-                    <path d="M2 12l10 5 10-5"></path>
-                </svg>
-            </div>
-            <div class="brand-text">
-                <span class="brand-title">GROUPWARE</span>
-                <span class="brand-subtitle">Administration</span>
-            </div>
-        </div>
+    <div class="app-main">
+        <?php include __DIR__ . "/../includes/topbar.php"; ?>
 
-        <div class="sidebar-label">MANAGEMENT</div>
-
-        <nav class="sidebar-nav">
-            <a href="dashboard.php" class="nav-link active">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                </span>
-                Overview
-            </a>
-
-            <a href="#user-management" class="nav-link">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="9" cy="7" r="4"></circle>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                    </svg>
-                </span>
-                User Accounts
-            </a>
-
-            <a href="create_user.php" class="nav-link">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="8.5" cy="7" r="4"></circle>
-                        <line x1="20" y1="8" x2="20" y2="14"></line>
-                        <line x1="23" y1="11" x2="17" y2="11"></line>
-                    </svg>
-                </span>
-                Create Student Account
-            </a>
-
-            <a href="#team-management" class="nav-link">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                        <polyline points="2 17 12 22 22 17"></polyline>
-                        <polyline points="2 12 12 17 22 12"></polyline>
-                    </svg>
-                </span>
-                Team Management
-            </a>
-        </nav>
-
-        <div class="sidebar-bottom">
-            <a href="../logout.php" class="logout-link">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                        <polyline points="16 17 21 12 16 7"></polyline>
-                        <line x1="21" y1="12" x2="9" y2="12"></line>
-                    </svg>
-                </span>
-                Sign Out
-            </a>
-        </div>
-    </aside>
-
-    <main class="main-content">
-
-        <header class="topbar">
-            <div class="topbar-left">
-                <h2>System Administration</h2>
-                <p>Enterprise management console for accounts, roles, and project teams.</p>
-            </div>
-
-            <div class="topbar-right">
-                <div class="profile">
-                    <div class="avatar" style="background-color: var(--primary-navy-light); color: var(--primary-navy);">
-                        <?php echo strtoupper(substr($adminName, 0, 1)); ?>
-                    </div>
-                    <div class="profile-details">
-                        <strong><?php echo htmlspecialchars($adminName); ?></strong>
-                        <small>Administrator</small>
-                    </div>
+        <main class="app-content">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Workspace Administration Console</h1>
+                    <p class="page-subtitle">Welcome, <?php echo htmlspecialchars($adminName); ?> &bull; Organization-wide accounts, permissions, and workspace management.</p>
                 </div>
-            </div>
-        </header>
-
-        <!-- WELCOME SECTION -->
-        <section class="welcome-section">
-            <div class="welcome-content">
-                <div class="welcome-tag">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                        <line x1="8" y1="21" x2="16" y2="21"></line>
-                        <line x1="12" y1="17" x2="12" y2="21"></line>
-                    </svg>
-                    <span>System Administration Console</span>
-                </div>
-                <h1>Welcome, <?php echo htmlspecialchars($adminName); ?>!</h1>
-                <p>
-                    Manage users, onboard new students to collaborative workspaces, and maintain organization data across your university platform.
-                </p>
-                <div class="welcome-actions">
-                    <a href="create_user.php" class="btn btn-white">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <div class="page-actions">
+                    <a href="create_user.php" class="btn btn-primary">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                        Create Student Account
-                    </a>
-                    <a href="#user-management" class="btn btn-trans">
-                        View All Accounts (<?php echo $totalUsers; ?>)
+                        <span>Add Member</span>
                     </a>
                 </div>
             </div>
-        </section>
 
-        <!-- SYSTEM STATISTICS GRID -->
-        <section class="stats-grid">
+            <!-- Stats Grid -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-label">Total Accounts</span>
+                        <div class="stat-icon-wrapper blue">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-value"><?php echo $totalUsers; ?></div>
+                    <div class="stat-trend">Registered accounts</div>
+                </div>
 
-            <div class="stat-card">
-                <div class="stat-card-top">
-                    <span class="stat-card-label">Total Accounts</span>
-                    <div class="stat-icon blue">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="9" cy="7" r="4"></circle>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                        </svg>
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-label">Team Members</span>
+                        <div class="stat-icon-wrapper green">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="8.5" cy="7" r="4"></circle>
+                                <polyline points="17 11 19 13 23 9"></polyline>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-value" style="color: var(--success);"><?php echo $membersCount; ?></div>
+                    <div class="stat-trend">Active collaborators</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-label">Project Leads</span>
+                        <div class="stat-icon-wrapper amber">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="7" r="4"></circle>
+                                <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-value" style="color: var(--warning);"><?php echo $leadsCount; ?></div>
+                    <div class="stat-trend">Managers &amp; leads</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-header">
+                        <span class="stat-label">Workspaces</span>
+                        <div class="stat-icon-wrapper purple">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                                <polyline points="2 17 12 22 22 17"></polyline>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="stat-value" style="color: #A855F7;"><?php echo $teamsCount; ?></div>
+                    <div class="stat-trend">Configured project teams</div>
+                </div>
+            </section>
+
+            <!-- User Accounts Table -->
+            <div class="card" id="user-management" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">User Accounts Directory</h3>
+                        <p class="card-subtitle">Active member profiles and security permissions</p>
+                    </div>
+                    <a href="create_user.php" class="btn btn-primary btn-sm">+ Add Member</a>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <?php if (!empty($recentUsers)): ?>
+                        <div class="table-container" style="border: none; border-radius: 0;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>User ID</th>
+                                        <th>Member Name</th>
+                                        <th>Work Email</th>
+                                        <th>Role Permission</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($recentUsers as $u): ?>
+                                        <tr>
+                                            <td>
+                                                <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.8rem;">#<?php echo (int) $u['id']; ?></span>
+                                            </td>
+                                            <td>
+                                                <div style="display: flex; align-items: center; gap: 10px;">
+                                                    <div class="user-avatar-circle" style="width: 30px; height: 30px; font-size: 0.75rem;">
+                                                        <?php echo strtoupper(substr($u['full_name'], 0, 1)); ?>
+                                                    </div>
+                                                    <strong style="color: var(--text-primary); font-size: 0.88rem;"><?php echo htmlspecialchars($u['full_name']); ?></strong>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span style="color: var(--text-secondary); font-size: 0.84rem;"><?php echo htmlspecialchars($u['email']); ?></span>
+                                            </td>
+                                            <td>
+                                                <?php if ($u['role'] === 'admin'): ?>
+                                                    <span class="badge-role" style="background: rgba(59, 130, 246, 0.15); color: var(--primary); border-color: rgba(59, 130, 246, 0.3);">Admin</span>
+                                                <?php elseif ($u['role'] === 'instructor'): ?>
+                                                    <span class="badge-role" style="background: rgba(245, 158, 11, 0.15); color: var(--warning); border-color: rgba(245, 158, 11, 0.3);">Project Lead</span>
+                                                <?php else: ?>
+                                                    <span class="badge-role">Team Member</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <span class="status-badge status-approved">Active</span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <h4 class="empty-state-title">No users found</h4>
+                            <p class="empty-state-text">No accounts exist in the database.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Teams & System Activity Grid -->
+            <div class="grid-2">
+                <!-- Teams Table -->
+                <div class="card" id="team-management">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Team Workspaces</h3>
+                            <p class="card-subtitle">Active project groups</p>
+                        </div>
+                        <span class="badge-role"><?php echo $teamsCount; ?> Workspaces</span>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <?php if (!empty($teamsList)): ?>
+                            <div class="table-container" style="border: none; border-radius: 0;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Team Name</th>
+                                            <th>Members</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($teamsList as $team): ?>
+                                            <tr>
+                                                <td>
+                                                    <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.8rem;">#<?php echo (int) $team['id']; ?></span>
+                                                </td>
+                                                <td>
+                                                    <strong style="color: var(--text-primary); font-size: 0.88rem;"><?php echo htmlspecialchars($team['team_name']); ?></strong>
+                                                </td>
+                                                <td>
+                                                    <span class="badge-role"><?php echo (int) $team['member_count']; ?> Collaborators</span>
+                                                </td>
+                                                <td>
+                                                    <span class="status-badge status-approved">Active</span>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php else: ?>
+                            <div class="empty-state">
+                                <h4 class="empty-state-title">No teams created</h4>
+                                <p class="empty-state-text">Configure workspaces to organize project collaborators.</p>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
-                <h3 class="stat-card-value"><?php echo $totalUsers; ?></h3>
-                <small class="stat-card-caption">All registered accounts</small>
-            </div>
 
-            <div class="stat-card">
-                <div class="stat-card-top">
-                    <span class="stat-card-label">Student Users</span>
-                    <div class="stat-icon teal">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-                            <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
-                        </svg>
+                <!-- Recent System Activity -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">System Audit Log</h3>
+                            <p class="card-subtitle">Recent administrative and user actions</p>
+                        </div>
+                        <a href="activity.php" class="btn btn-ghost btn-sm">Full Audit Trail &rarr;</a>
                     </div>
-                </div>
-                <h3 class="stat-card-value"><?php echo $studentsCount; ?></h3>
-                <small class="stat-card-caption">Active student accounts</small>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-card-top">
-                    <span class="stat-card-label">Instructors</span>
-                    <div class="stat-icon amber">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="7" r="4"></circle>
-                            <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
-                        </svg>
-                    </div>
-                </div>
-                <h3 class="stat-card-value"><?php echo $instructorsCount; ?></h3>
-                <small class="stat-card-caption">Faculty members</small>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-card-top">
-                    <span class="stat-card-label">Project Teams</span>
-                    <div class="stat-icon emerald">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                            <polyline points="2 17 12 22 22 17"></polyline>
-                        </polyline>
-                    </div>
-                </div>
-                <h3 class="stat-card-value"><?php echo $teamsCount; ?></h3>
-                <small class="stat-card-caption">Configured workspaces</small>
-            </div>
-
-        </section>
-
-        <!-- USER MANAGEMENT DATA TABLE -->
-        <section id="user-management" class="content-card" style="margin-bottom: 24px;">
-
-            <div class="section-heading">
-                <div>
-                    <h3>User Management</h3>
-                    <p>Registered system users and role permissions</p>
-                </div>
-                <a href="create_user.php" class="btn btn-primary btn-sm">
-                    + Create Student
-                </a>
-            </div>
-
-            <?php if (!empty($recentUsers)): ?>
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Full Name</th>
-                                <th>Institutional Email</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($recentUsers as $u): ?>
-                                <tr>
-                                    <td>
-                                        <span style="font-family: monospace; color: var(--text-muted);">#<?php echo (int) $u['id']; ?></span>
-                                    </td>
-                                    <td>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <div class="avatar" style="width: 30px; height: 30px; font-size: 0.75rem;">
-                                                <?php echo strtoupper(substr($u['full_name'], 0, 1)); ?>
-                                            </div>
-                                            <strong><?php echo htmlspecialchars($u['full_name']); ?></strong>
+                    <div class="card-body">
+                        <?php if (!empty($systemActivities)): ?>
+                            <ul class="activity-feed">
+                                <?php foreach ($systemActivities as $act): ?>
+                                    <li class="activity-item">
+                                        <div class="activity-icon-badge">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg>
                                         </div>
-                                    </td>
-                                    <td>
-                                        <span style="color: var(--text-secondary);"><?php echo htmlspecialchars($u['email']); ?></span>
-                                    </td>
-                                    <td>
-                                        <?php if ($u['role'] === 'admin'): ?>
-                                            <span class="badge badge-role" style="background: var(--deep-navy); color: #FFFFFF;">Admin</span>
-                                        <?php elseif ($u['role'] === 'instructor'): ?>
-                                            <span class="badge badge-teal">Instructor</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-role">Student</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-approved">Active</span>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                                        <div class="activity-content">
+                                            <div class="activity-title">
+                                                <strong><?php echo htmlspecialchars($act['full_name'] ?? 'User'); ?>:</strong>
+                                                <?php echo htmlspecialchars($act['description']); ?>
+                                            </div>
+                                            <div class="activity-time">
+                                                <?php echo date('M d, Y &bull; g:i:s A', strtotime($act['created_at'])); ?>
+                                            </div>
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php else: ?>
+                            <div class="empty-state">
+                                <h4 class="empty-state-title">No activity logged</h4>
+                                <p class="empty-state-text">Actions will stream here in real-time.</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-            <?php else: ?>
-                <div class="empty-state">
-                    <h3>No users found</h3>
-                    <p>No user accounts exist in the database.</p>
-                </div>
-            <?php endif; ?>
-
-        </section>
-
-        <!-- TEAM MANAGEMENT -->
-        <section id="team-management" class="content-card">
-
-            <div class="section-heading">
-                <div>
-                    <h3>Team Management</h3>
-                    <p>Configured project workspaces and current enrollments</p>
-                </div>
-                <span class="badge badge-teal"><?php echo $teamsCount; ?> Total Teams</span>
             </div>
-
-            <?php if (!empty($teamsList)): ?>
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Team ID</th>
-                                <th>Team Name</th>
-                                <th>Assigned Members</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($teamsList as $team): ?>
-                                <tr>
-                                    <td>
-                                        <span style="font-family: monospace; color: var(--text-muted);">#<?php echo (int) $team['id']; ?></span>
-                                    </td>
-                                    <td>
-                                        <strong><?php echo htmlspecialchars($team['team_name']); ?></strong>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-role">
-                                            <?php echo (int) $team['member_count']; ?> Students
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-approved">Active</span>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php else: ?>
-                <div class="empty-state">
-                    <h3>No teams created</h3>
-                    <p>Add student teams to assign group projects.</p>
-                </div>
-            <?php endif; ?>
-
-        </section>
-
-        <footer class="dashboard-footer">
-            GROUPWARE &copy; 2026 &bull; System Administration &amp; Access Control Console
-        </footer>
-
-    </main>
-
+        </main>
+    </div>
 </div>
 
-</body>
-</html>
+<?php include __DIR__ . "/../includes/layout_footer.php"; ?>
