@@ -96,26 +96,3 @@ function getRecentTeamActivities(PDO $conn, int $teamId, int $limit = 5): array 
 }
 
 
-/**
- * Fetch the latest activity entries for a specific team
- */
-function getRecentTeamActivities(PDO $conn, int $teamId, int $limit = 5): array {
-    try {
-        $stmt = $conn->prepare("
-            SELECT a.id, a.activity_type, a.description, a.created_at,
-                   u.full_name, u.role
-            FROM activity_logs a
-            LEFT JOIN users u ON a.user_id = u.id
-            WHERE a.team_id = ?
-            ORDER BY a.created_at DESC
-            LIMIT ?
-        ");
-        $stmt->bindValue(1, $teamId, PDO::PARAM_INT);
-        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        // Fail silently if table not yet created
-        return [];
-    }
-}
