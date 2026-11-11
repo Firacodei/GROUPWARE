@@ -1,15 +1,10 @@
 <?php
 session_start();
-require_once "../config/database.php";
+require_once __DIR__ . "/../config/database.php";
+require_once __DIR__ . "/../config/activity_logger.php";
+require_once __DIR__ . "/../includes/auth.php";
 
-if (
-    !isset($_SESSION["user_id"]) ||
-    !isset($_SESSION["role"]) ||
-    $_SESSION["role"] !== "student"
-) {
-    header("Location: ../index.php");
-    exit;
-}
+requireAuth('student', '../login.php');
 
 $userId = (int) $_SESSION["user_id"];
 $message = "";
@@ -26,12 +21,10 @@ $teamQuery->execute([$userId]);
 $team = $teamQuery->fetch(PDO::FETCH_ASSOC);
 
 if (!$team) {
-    die("You are not assigned to a team.");
+    die("You are not assigned to a team workspace.");
 }
 
 $teamId = (int) $team["team_id"];
-
-// Process a vote
 
 // Process a vote and calculate the majority decision
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -91,7 +84,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $eligibleVoters = (int) $eligibleQuery->fetchColumn();
 
-            // Calculate the majority threshold
+            // Calculate majority threshold
             $majority = (int) floor($eligibleVoters / 2) + 1;
 
             // Count approval and rejection votes
@@ -109,7 +102,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $approvals = (int) $results["approvals"];
             $rejections = (int) $results["rejections"];
 
-            // Determine the proposal's final status
+            // Determine final status
             $newStatus = "pending";
 
             if ($approvals >= $majority) {
@@ -118,7 +111,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $newStatus = "rejected";
             }
 
-            // Update proposal status if a majority is reached
+            // Update proposal status if majority reached
             $update = $conn->prepare("
                 UPDATE proposals
                 SET status = ?
@@ -129,7 +122,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $conn->commit();
 
-            require_once __DIR__ . "/../config/activity_logger.php";
             logActivity(
                 $conn,
                 $userId,
@@ -146,7 +138,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $userId,
                     $teamId,
                     'proposal_approved',
-                    "Proposal \"{$proposal['title']}\" reached majority approval",
+                    "Proposal \"{$proposal['title']}\" reached majority approval ($approvals/$majority votes)",
                     'proposal',
                     $proposalId
                 );
@@ -163,11 +155,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             }
 
             if ($newStatus === "approved") {
-                $message = "Your vote was recorded. The proposal has been approved!";
+                $message = "Vote recorded. Proposal has officially reached majority approval!";
             } elseif ($newStatus === "rejected") {
-                $message = "Your vote was recorded. The proposal has been rejected.";
+                $message = "Vote recorded. Proposal has been rejected by majority decision.";
             } else {
-                $message = "Your vote has been recorded successfully. Waiting for more votes.";
+                $message = "Your vote was recorded successfully. Waiting for remaining teammate votes.";
             }
 
             $isVoteSuccess = true;
@@ -178,10 +170,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             }
 
             if ($e->getCode() === "23000") {
-                $message = "You have already voted on this proposal.";
+                $message = "You have already cast a vote on this proposal.";
             } else {
-                error_log($e->getMessage());
-                $message = "Something went wrong. Please try again.";
+                error_log("Voting error: " . $e->getMessage());
+                $message = "A database error occurred. Please try again.";
             }
 
         } catch (Exception $e) {
@@ -194,7 +186,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 }
 
-
+// Fetch total eligible team voters count
+$totalTeamCountQuery = $conn->prepare("SELECT COUNT(*) FROM team_members WHERE team_id = ?");
+$totalTeamCountQuery->execute([$teamId]);
+$totalTeamMembers = (int) $totalTeamCountQuery->fetchColumn();
 
 // Fetch pending proposals and vote counts
 $stmt = $conn->prepare("
@@ -203,6 +198,7 @@ $stmt = $conn->prepare("
         p.title,
         p.description,
         p.created_at,
+        p.proposed_by,
         u.full_name AS proposer,
         (SELECT COUNT(*)
          FROM proposal_votes pv
@@ -226,181 +222,153 @@ $stmt = $conn->prepare("
 
 $stmt->execute([$userId, $teamId, $userId]);
 $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$pageTitle = "Proposal Approvals";
+$pageTitleHeader = "Approvals";
+$activeNav = "approvals";
+$rootUrl = "../";
+
+include __DIR__ . "/../includes/layout_head.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proposal Approvals | GROUPWARE</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
-<body>
 
-<div class="approval-container">
+<div class="app-shell">
+    <?php include __DIR__ . "/../includes/sidebar.php"; ?>
 
-    <header class="approval-header">
-        <div>
-            <h1>Proposal Approvals</h1>
-            <p>Review change requests proposed by your team members and cast your vote.</p>
-        </div>
+    <div class="app-main">
+        <?php include __DIR__ . "/../includes/topbar.php"; ?>
 
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <a href="dashboard.php" class="btn btn-secondary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12"></line>
-                    <polyline points="12 19 5 12 12 5"></polyline>
-                </svg>
-                Dashboard
-            </a>
-            <a href="proposals.php" class="btn btn-primary">
-                + New Proposal
-            </a>
-        </div>
-    </header>
-
-    <?php if ($message): ?>
-        <div class="alert <?php echo $isVoteSuccess ? 'alert-success' : 'alert-warning'; ?>" role="alert">
-            <?php if ($isVoteSuccess): ?>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            <?php else: ?>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-            <?php endif; ?>
-            <span><?php echo htmlspecialchars($message); ?></span>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($proposals): ?>
-
-        <?php foreach ($proposals as $proposal): ?>
-
-            <article class="approval-card">
-
-                <div class="proposal-item-top">
-                    <div>
-                        <h2><?php echo htmlspecialchars($proposal["title"]); ?></h2>
-                        <div class="approval-proposer" style="margin-top: 4px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="12" cy="7" r="4"></circle>
-                            </svg>
-                            <span>Proposed by: <strong><?php echo htmlspecialchars($proposal["proposer"]); ?></strong></span>
-                            <span style="color: var(--text-muted);">&bull;</span>
-                            <span style="color: var(--text-muted);"><?php echo date("M d, Y", strtotime($proposal["created_at"])); ?></span>
-                        </div>
-                    </div>
-                    <span class="status-badge status-pending">Pending Vote</span>
+        <main class="app-content">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Proposal Approvals &amp; Consensus</h1>
+                    <p class="page-subtitle">Evaluate peer suggestions, review architectural justifications, and cast your decision.</p>
                 </div>
-
-                <p class="approval-description">
-                    <?php echo nl2br(htmlspecialchars($proposal["description"])); ?>
-                </p>
-
-                <div class="vote-counts">
-                    <div class="vote-count-chip approved">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
+                <div class="page-actions">
+                    <a href="proposals.php" class="btn btn-secondary">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                        <span>Approved: <strong><?php echo (int) $proposal["approvals"]; ?></strong></span>
-                    </div>
-
-                    <div class="vote-count-chip rejected">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                        <span>Rejected: <strong><?php echo (int) $proposal["rejections"]; ?></strong></span>
-                    </div>
+                        <span>Submit Proposal</span>
+                    </a>
                 </div>
-
-                <?php if ($proposal["has_voted"]): ?>
-
-                    <div class="already-voted">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                        <span>You have already cast your vote on this proposal.</span>
-                    </div>
-
-                <?php else: ?>
-
-                    <form method="POST" action="" class="vote-actions">
-
-                        <input
-                            type="hidden"
-                            name="proposal_id"
-                            value="<?php echo (int) $proposal["id"]; ?>"
-                        >
-
-                        <button
-                            type="submit"
-                            name="vote"
-                            value="approve"
-                            class="approve-btn"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                            Approve Proposal
-                        </button>
-
-                        <button
-                            type="submit"
-                            name="vote"
-                            value="reject"
-                            class="reject-btn"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                            Reject Proposal
-                        </button>
-
-                    </form>
-
-                <?php endif; ?>
-
-            </article>
-
-        <?php endforeach; ?>
-
-    <?php else: ?>
-
-        <div class="approval-empty">
-            <div class="empty-icon" style="margin-bottom: 14px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                </svg>
             </div>
-            <h2>No pending proposals to review</h2>
-            <p>All change proposals submitted by other team members have been reviewed.</p>
-            <a href="dashboard.php" class="btn btn-secondary">Back to Dashboard</a>
-        </div>
 
-    <?php endif; ?>
+            <?php if ($message): ?>
+                <div class="alert <?php echo $isVoteSuccess ? 'alert-success' : 'alert-warning'; ?>" role="alert">
+                    <?php if ($isVoteSuccess): ?>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    <?php else: ?>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    <?php endif; ?>
+                    <span><?php echo htmlspecialchars($message); ?></span>
+                </div>
+            <?php endif; ?>
 
-    <div>
-        <a href="dashboard.php" class="approval-back">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-            Back to Dashboard
-        </a>
+            <?php if (!empty($proposals)): ?>
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <?php foreach ($proposals as $prop): ?>
+                        <?php
+                            $approvals = (int) $prop["approvals"];
+                            $rejections = (int) $prop["rejections"];
+                            $eligibleVoters = max(1, $totalTeamMembers - 1);
+                            $majorityThreshold = (int) floor($eligibleVoters / 2) + 1;
+                            $approvalPct = min(100, round(($approvals / $majorityThreshold) * 100));
+                        ?>
+                        <article class="card" style="padding: 24px;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;">
+                                <div>
+                                    <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">
+                                        <?php echo htmlspecialchars($prop["title"]); ?>
+                                    </h2>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <div class="user-avatar-circle" style="width: 22px; height: 22px; font-size: 0.65rem;">
+                                                <?php echo strtoupper(substr($prop["proposer"], 0, 1)); ?>
+                                            </div>
+                                            <span>Proposed by <strong><?php echo htmlspecialchars($prop["proposer"]); ?></strong></span>
+                                        </div>
+                                        <span>&bull;</span>
+                                        <span><?php echo date("M d, Y &bull; g:i A", strtotime($prop["created_at"])); ?></span>
+                                    </div>
+                                </div>
+
+                                <span class="status-badge status-pending">Pending Consensus</span>
+                            </div>
+
+                            <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; margin-bottom: 18px;">
+                                <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; margin: 0;"><?php echo htmlspecialchars($prop["description"]); ?></p>
+                            </div>
+
+                            <!-- Majority Progress & Consensus Tracker -->
+                            <div class="voting-progress-box">
+                                <div class="voting-stats-row">
+                                    <span style="font-weight: 600; color: var(--text-primary);">
+                                        Majority Progress: <?php echo $approvals; ?> of <?php echo $majorityThreshold; ?> required approvals
+                                    </span>
+                                    <span style="color: var(--text-muted); font-size: 0.78rem;">
+                                        <?php echo $rejections; ?> rejection(s) recorded
+                                    </span>
+                                </div>
+                                <div class="progress-bar-wrap">
+                                    <div class="progress-bar-fill green" style="width: <?php echo $approvalPct; ?>%;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Voting Action Buttons -->
+                            <?php if ($prop["has_voted"]): ?>
+                                <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-md); color: var(--primary); font-size: 0.84rem; font-weight: 600;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                    <span>Your vote has been cast. Waiting for the remaining team member decisions.</span>
+                                </div>
+                            <?php else: ?>
+                                <form method="POST" action="approvals.php" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                                    <input type="hidden" name="proposal_id" value="<?php echo (int) $prop["id"]; ?>">
+
+                                    <button type="submit" name="vote" value="approve" class="btn btn-success">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                        <span>Approve Proposal</span>
+                                    </button>
+
+                                    <button type="submit" name="vote" value="reject" class="btn btn-danger" data-confirm="Are you sure you want to vote to reject this proposal?">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                                        </svg>
+                                        <span>Reject Proposal</span>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="card">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </div>
+                        <h3 class="empty-state-title">No pending proposals awaiting your vote</h3>
+                        <p class="empty-state-text">All active proposals submitted by your teammates have reached a decision or have already been voted on by you.</p>
+                        <a href="dashboard.php" class="btn btn-secondary">Return to Dashboard</a>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </main>
     </div>
-
 </div>
 
-</body>
-</html>
+<?php include __DIR__ . "/../includes/layout_footer.php"; ?>

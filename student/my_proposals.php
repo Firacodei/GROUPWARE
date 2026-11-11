@@ -1,27 +1,23 @@
 <?php
 session_start();
-require_once "../config/database.php";
+require_once __DIR__ . "/../config/database.php";
+require_once __DIR__ . "/../includes/auth.php";
 
-// Allow logged-in students only
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'student') {
-    header("Location: ../index.php");
-    exit;
-}
+requireAuth('student', '../login.php');
 
-$user_id = $_SESSION['user_id'];
+$userId = (int) $_SESSION['user_id'];
 
-// Fetch only proposals submitted by this student
+// Fetch proposals submitted by this user
 $stmt = $conn->prepare("
-    SELECT title, description, status, created_at
+    SELECT id, title, description, status, created_at
     FROM proposals
     WHERE proposed_by = ?
     ORDER BY created_at DESC
 ");
-
-$stmt->execute([$user_id]);
+$stmt->execute([$userId]);
 $proposals = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Calculate status counts
+// Metrics
 $pendingCount = 0;
 $approvedCount = 0;
 $rejectedCount = 0;
@@ -31,147 +27,112 @@ foreach ($proposals as $p) {
     elseif ($p['status'] === 'approved') $approvedCount++;
     elseif ($p['status'] === 'rejected') $rejectedCount++;
 }
+
+$pageTitle = "My Proposals";
+$pageTitleHeader = "My Proposals";
+$activeNav = "my_proposals";
+$rootUrl = "../";
+
+include __DIR__ . "/../includes/layout_head.php";
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Proposals | GROUPWARE</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
-<body>
 
-<div class="my-proposals-container">
+<div class="app-shell">
+    <?php include __DIR__ . "/../includes/sidebar.php"; ?>
 
-    <div class="my-proposals-header">
-        <div>
-            <h1>My Submitted Proposals</h1>
-            <p>Track review progress and decisions on the change proposals you submitted.</p>
-        </div>
+    <div class="app-main">
+        <?php include __DIR__ . "/../includes/topbar.php"; ?>
 
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <a href="dashboard.php" class="btn btn-secondary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12"></line>
-                    <polyline points="12 19 5 12 12 5"></polyline>
-                </svg>
-                Dashboard
-            </a>
-            <a href="proposals.php" class="btn btn-primary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                New Proposal
-            </a>
-        </div>
-    </div>
-
-    <!-- Summary Metrics -->
-    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
-        <div class="stat-card" style="padding: 16px 20px;">
-            <span class="stat-card-label">Total Submitted</span>
-            <h3 class="stat-card-value" style="font-size: 1.5rem;"><?php echo count($proposals); ?></h3>
-        </div>
-        <div class="stat-card" style="padding: 16px 20px;">
-            <span class="stat-card-label">Pending Review</span>
-            <h3 class="stat-card-value" style="font-size: 1.5rem; color: var(--warning);"><?php echo $pendingCount; ?></h3>
-        </div>
-        <div class="stat-card" style="padding: 16px 20px;">
-            <span class="stat-card-label">Approved</span>
-            <h3 class="stat-card-value" style="font-size: 1.5rem; color: var(--success);"><?php echo $approvedCount; ?></h3>
-        </div>
-        <div class="stat-card" style="padding: 16px 20px;">
-            <span class="stat-card-label">Rejected</span>
-            <h3 class="stat-card-value" style="font-size: 1.5rem; color: var(--danger);"><?php echo $rejectedCount; ?></h3>
-        </div>
-    </div>
-
-    <?php if (count($proposals) > 0): ?>
-
-        <div class="proposal-list">
-
-            <?php foreach ($proposals as $proposal): ?>
-
-                <div class="proposal-item">
-
-                    <div class="proposal-item-top">
-                        <h2><?php echo htmlspecialchars($proposal['title']); ?></h2>
-
-                        <span class="status-badge status-<?php echo htmlspecialchars($proposal['status']); ?>">
-                            <?php if ($proposal['status'] === 'approved'): ?>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                            <?php elseif ($proposal['status'] === 'rejected'): ?>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            <?php else: ?>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <polyline points="12 6 12 12 16 14"></polyline>
-                                </svg>
-                            <?php endif; ?>
-                            <?php echo ucfirst(htmlspecialchars($proposal['status'])); ?>
-                        </span>
-                    </div>
-
-                    <p class="proposal-description">
-                        <?php echo nl2br(htmlspecialchars($proposal['description'])); ?>
-                    </p>
-
-                    <div class="proposal-date">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="16" y1="2" x2="16" y2="6"></line>
-                            <line x1="8" y1="2" x2="8" y2="6"></line>
-                            <line x1="3" y1="10" x2="21" y2="10"></line>
+        <main class="app-content">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">My Submitted Proposals</h1>
+                    <p class="page-subtitle">Track the consensus status and peer voting decisions on your change requests.</p>
+                </div>
+                <div class="page-actions">
+                    <a href="proposals.php" class="btn btn-primary">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                        Submitted on: <?php echo date("M d, Y &bull; h:i A", strtotime($proposal['created_at'])); ?>
-                    </div>
+                        <span>Submit New Proposal</span>
+                    </a>
+                </div>
+            </div>
 
+            <!-- Summary Metrics Cards -->
+            <section class="stats-grid" style="margin-bottom: 24px;">
+                <div class="stat-card">
+                    <span class="stat-label">Total Submitted</span>
+                    <div class="stat-value"><?php echo count($proposals); ?></div>
+                    <div class="stat-trend">All time change requests</div>
                 </div>
 
-            <?php endforeach; ?>
+                <div class="stat-card">
+                    <span class="stat-label">Pending Review</span>
+                    <div class="stat-value" style="color: var(--warning);"><?php echo $pendingCount; ?></div>
+                    <div class="stat-trend">Actively open for voting</div>
+                </div>
 
-        </div>
+                <div class="stat-card">
+                    <span class="stat-label">Approved</span>
+                    <div class="stat-value" style="color: var(--success);"><?php echo $approvedCount; ?></div>
+                    <div class="stat-trend">Consensus reached</div>
+                </div>
 
-    <?php else: ?>
+                <div class="stat-card">
+                    <span class="stat-label">Rejected</span>
+                    <div class="stat-value" style="color: var(--danger);"><?php echo $rejectedCount; ?></div>
+                    <div class="stat-trend">Declined by majority</div>
+                </div>
+            </section>
 
-        <div class="empty-proposals">
-            <div class="empty-icon" style="margin-bottom: 14px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                </svg>
-            </div>
-            <h2>No proposals submitted yet</h2>
-            <p>You haven't submitted any project proposals to your team.</p>
+            <!-- Proposals List -->
+            <?php if (!empty($proposals)): ?>
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <?php foreach ($proposals as $prop): ?>
+                        <article class="card" style="padding: 22px;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;">
+                                <div>
+                                    <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">
+                                        <?php echo htmlspecialchars($prop['title']); ?>
+                                    </h2>
+                                    <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                        <span>Submitted on <?php echo date("M d, Y &bull; g:i A", strtotime($prop['created_at'])); ?></span>
+                                    </div>
+                                </div>
 
-            <a href="proposals.php" class="btn btn-primary">
-                Submit Your First Proposal
-            </a>
-        </div>
+                                <span class="status-badge status-<?php echo htmlspecialchars($prop['status']); ?>">
+                                    <?php echo ucfirst(htmlspecialchars($prop['status'])); ?>
+                                </span>
+                            </div>
 
-    <?php endif; ?>
-
-    <div>
-        <a href="dashboard.php" class="proposal-back">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"></line>
-                <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-            Back to Dashboard
-        </a>
+                            <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; margin: 0;"><?php echo htmlspecialchars($prop['description']); ?></p>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="card">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                        </div>
+                        <h3 class="empty-state-title">No proposals submitted yet</h3>
+                        <p class="empty-state-text">You haven't authored any change proposals for your team workspace.</p>
+                        <a href="proposals.php" class="btn btn-primary">Create Your First Proposal</a>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </main>
     </div>
-
 </div>
 
-</body>
-</html>
+<?php include __DIR__ . "/../includes/layout_footer.php"; ?>
